@@ -37,7 +37,10 @@ abstract class AsyncBase {
    * @return          the value.
    */
   @compileTimeOnly("`await` must be enclosed in an `async` block")
-  def await[T](awaitable: futureSystem.Fut[T]): T = ???
+  def await[T](awaitable: futureSystem.Awaiter[T]): T = ???
+
+  @compileTimeOnly("`awaitOnly` must be enclosed in an `async` block")
+  def awaitOnly[T](awaitable: futureSystem.Awaiter[T]): T = ???
 
   def asyncImpl[T: c.WeakTypeTag](c: Context)
                                  (body: c.Expr[T])
@@ -63,6 +66,12 @@ abstract class AsyncBase {
     import u._
     if (asyncMacroSymbol == null) NoSymbol
     else asyncMacroSymbol.owner.typeSignature.member(newTermName("await"))
+  }
+
+  protected[async] def awaitOnlyMethod(u: Universe)(asyncMacroSymbol: u.Symbol): u.Symbol = {
+    import u._
+    if (asyncMacroSymbol == null) NoSymbol
+    else asyncMacroSymbol.owner.typeSignature.member(newTermName("awaitOnly"))
   }
 
   protected[async] def nullOut(u: Universe)(name: u.Expr[String], v: u.Expr[Any]): u.Expr[Unit] =

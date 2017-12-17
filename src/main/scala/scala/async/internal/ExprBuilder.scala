@@ -81,7 +81,7 @@ trait ExprBuilder {
     * handler will unconditionally transition to `nextState`.
     */
   final class AsyncStateWithAwait(var stats: List[Tree], val state: Int, onCompleteState: Int, nextState: Int,
-                                  val awaitable: Awaitable, symLookup: SymLookup)
+                                  val awaitable: Awaitable, symLookup: SymLookup, only: Boolean = false)
     extends AsyncState {
 
     def nextStates: List[Int] =
@@ -89,12 +89,14 @@ trait ExprBuilder {
 
     override def mkHandlerCaseForState[T: WeakTypeTag]: CaseDef = {
       val fun = This(tpnme.EMPTY)
-      val callOnComplete = futureSystemOps.onComplete[Any, Unit](c.Expr[futureSystem.Fut[Any]](awaitable.expr),
+      val callOnComplete = futureSystemOps.onComplete[Any, Unit](c.Expr[futureSystem.Awaiter[Any]](awaitable.expr),
         c.Expr[futureSystem.Tryy[Any] => Unit](fun), c.Expr[futureSystem.ExecContext](Ident(name.execContext))).tree
       val tryGetOrCallOnComplete: List[Tree] =
         if (futureSystemOps.continueCompletedFutureOnSameThread) {
           val tempName = name.fresh(name.completed)
-          val initTemp = ValDef(NoMods, tempName, TypeTree(futureSystemOps.tryType[Any]), futureSystemOps.getCompleted[Any](c.Expr[futureSystem.Fut[Any]](awaitable.expr)).tree)
+          val initTemp = ValDef(NoMods, tempName, TypeTree(futureSystemOps.tryType[Any]),
+            if (!only) futureSystemOps.getCompleted[Any](c.Expr[futureSystem.Awaiter[Any]](awaitable.expr)).tree
+            else futureSystemOps.getCompletedOnly[Any](c.Expr[futureSystem.Awaiter[Any]](awaitable.expr)).tree)
           val ifTree = If(Apply(Select(Literal(Constant(null)), TermName("ne")), Ident(tempName) :: Nil),
             adaptToUnit(ifIsFailureTree[T](Ident(tempName)) :: Nil),
             Block(toList(callOnComplete), Return(literalUnit)))
@@ -182,6 +184,12 @@ trait ExprBuilder {
                         onCompleteState: Int,
                         nextState: Int): AsyncState = {
       new AsyncStateWithAwait(stats.toList, state, onCompleteState, effectiveNextState(nextState), awaitable, symLookup)
+    }
+
+    def resultWithAwaitOnly(awaitable: Awaitable,
+                            onCompleteState: Int,
+                            nextState: Int): AsyncState = {
+      new AsyncStateWithAwait(stats.toList, state, onCompleteState, effectiveNextState(nextState), awaitable, symLookup, only = true)
     }
 
     def resultSimple(nextState: Int): AsyncState = {
@@ -273,6 +281,15 @@ trait ExprBuilder {
         val afterAwaitState = nextState()
         val awaitable = Awaitable(arg, stat.symbol, tpt.tpe, vd)
         asyncStates += stateBuilder.resultWithAwait(awaitable, onCompleteState, afterAwaitState) // complete with await
+        currState = afterAwaitState
+        stateBuilder = new AsyncStateBuilder(currState, symLookup)
+
+      // the val name = awaitOnly(..) pattern
+      case vd @ ValDef(mods, name, tpt, Apply(fun, arg :: Nil)) if isAwaitOnly(fun) =>
+        val onCompleteState = nextState()
+        val afterAwaitState = nextState()
+        val awaitable = Awaitable(arg, stat.symbol, tpt.tpe, vd)
+        asyncStates += stateBuilder.resultWithAwaitOnly(awaitable, onCompleteState, afterAwaitState) // complete with awaitOnly
         currState = afterAwaitState
         stateBuilder = new AsyncStateBuilder(currState, symLookup)
 

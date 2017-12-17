@@ -64,6 +64,9 @@ private[async] trait TransformUtils {
   def isAwait(fun: Tree) =
     fun.symbol == defn.Async_await
 
+  def isAwaitOnly(fun: Tree) =
+    fun.symbol == defn.Async_awaitOnly
+
   def newBlock(stats: List[Tree], expr: Tree): Block = {
     Block(stats, expr)
   }
@@ -189,6 +192,7 @@ private[async] trait TransformUtils {
     val ThrowableClass = rootMirror.staticClass("java.lang.Throwable")
     lazy val Async_async   = asyncBase.asyncMethod(c.universe)(c.macroApplication.symbol)
     lazy val Async_await   = asyncBase.awaitMethod(c.universe)(c.macroApplication.symbol)
+    lazy val Async_awaitOnly = asyncBase.awaitOnlyMethod(c.universe)(c.macroApplication.symbol)
     val IllegalStateExceptionClass = rootMirror.staticClass("java.lang.IllegalStateException")
   }
 

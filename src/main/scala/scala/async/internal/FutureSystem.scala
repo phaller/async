@@ -21,6 +21,8 @@ trait FutureSystem {
   type Prom[A]
   /** A (potentially in-progress) computation */
   type Fut[A]
+
+  type Awaiter[A]
   /** An execution context, required to create or register an on completion callback on a Future. */
   type ExecContext
   /** Any data type isomorphic to scala.util.Try. */
@@ -45,7 +47,7 @@ trait FutureSystem {
     def future[A: WeakTypeTag](a: Expr[A])(execContext: Expr[ExecContext]): Expr[Fut[A]]
 
     /** Register an call back to run on completion of the given future */
-    def onComplete[A, U](future: Expr[Fut[A]], fun: Expr[Tryy[A] => U],
+    def onComplete[A, U](awaiter: Expr[Awaiter[A]], fun: Expr[Tryy[A] => U],
                          execContext: Expr[ExecContext]): Expr[Unit]
 
     def continueCompletedFutureOnSameThread = false
@@ -53,8 +55,11 @@ trait FutureSystem {
     /** Return `null` if this future is not yet completed, or `Tryy[A]` with the completed result
       * otherwise
       */
-    def getCompleted[A: WeakTypeTag](future: Expr[Fut[A]]): Expr[Tryy[A]] =
+    def getCompleted[A: WeakTypeTag](awaiter: Expr[Awaiter[A]]): Expr[Tryy[A]] =
       throw new UnsupportedOperationException("getCompleted not supported by this FutureSystem")
+
+    def getCompletedOnly[A: WeakTypeTag](awaiter: Expr[Awaiter[A]]): Expr[Tryy[A]] =
+      throw new UnsupportedOperationException("getCompletedOnly not supported by this FutureSystem")
 
     /** Complete a promise with a value */
     def completeProm[A](prom: Expr[Prom[A]], value: Expr[Tryy[A]]): Expr[Unit]
@@ -86,6 +91,7 @@ object ScalaConcurrentFutureSystem extends FutureSystem {
 
   type Prom[A] = Promise[A]
   type Fut[A] = Future[A]
+  type Awaiter[A] = Future[A]
   type ExecContext = ExecutionContext
   type Tryy[A] = scala.util.Try[A]
 
@@ -109,15 +115,15 @@ object ScalaConcurrentFutureSystem extends FutureSystem {
       Future(a.splice)(execContext.splice)
     }
 
-    def onComplete[A, U](future: Expr[Fut[A]], fun: Expr[scala.util.Try[A] => U],
+    def onComplete[A, U](awaiter: Expr[Awaiter[A]], fun: Expr[scala.util.Try[A] => U],
                          execContext: Expr[ExecContext]): Expr[Unit] = reify {
-      future.splice.onComplete(fun.splice)(execContext.splice)
+      awaiter.splice.onComplete(fun.splice)(execContext.splice)
     }
 
     override def continueCompletedFutureOnSameThread: Boolean = true
 
-    override def getCompleted[A: WeakTypeTag](future: Expr[Fut[A]]): Expr[Tryy[A]] = reify {
-      if (future.splice.isCompleted) future.splice.value.get else null
+    override def getCompleted[A: WeakTypeTag](awaiter: Expr[Awaiter[A]]): Expr[Tryy[A]] = reify {
+      if (awaiter.splice.isCompleted) awaiter.splice.value.get else null
     }
 
     def completeProm[A](prom: Expr[Prom[A]], value: Expr[scala.util.Try[A]]): Expr[Unit] = reify {

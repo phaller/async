@@ -48,6 +48,7 @@ object IdentityFutureSystem extends FutureSystem {
   type Prom[A] = Box[A]
 
   type Fut[A] = A
+  type Awaiter[A] = A
   type ExecContext = Unit
   type Tryy[A] = scala.util.Try[A]
 
@@ -71,7 +72,7 @@ object IdentityFutureSystem extends FutureSystem {
 
     def future[A: WeakTypeTag](t: Expr[A])(execContext: Expr[ExecContext]) = t
 
-    def onComplete[A, U](future: Expr[Fut[A]], fun: Expr[Tryy[A] => U],
+    def onComplete[A, U](future: Expr[Awaiter[A]], fun: Expr[Tryy[A] => U],
                          execContext: Expr[ExecContext]): Expr[Unit] = reify {
       fun.splice.apply(util.Success(future.splice))
       c.Expr[Unit](Literal(Constant(()))).splice
